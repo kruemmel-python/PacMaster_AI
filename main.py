@@ -9,31 +9,34 @@ import random
 import time
 from collections import deque
 import math
+import matplotlib.pyplot as plt
 
 # Konfiguration
 WIDTH, HEIGHT = 400, 400
-NUM_EPISODES = 200
-BATCH_SIZE = 64
+NUM_EPISODES = 1000
+BATCH_SIZE = 128
 LEARNING_RATE = 0.0005
 GAMMA = 0.95
 EPSILON_START = 1.0
-EPSILON_MIN = 0.01
-EPSILON_DECAY_RATE = 0.0002 # Langsamere Zerfallsrate für mehr Exploration
+EPSILON_MIN = 0.05
+EPSILON_DECAY_RATE = 0.0001 # Langsamere Zerfallsrate für mehr Exploration
 TARGET_UPDATE_FREQ = 100
 MODEL_PATH = "ddqn_agent.keras"
 RENDER_EVERY = 10
 PRIORITIZED_REPLAY_EPS = 1e-6
 MEMORY_SIZE_START = 1000  # Startgröße des Speichers
-MEMORY_SIZE_MAX = 10000 # Maximale Speichergröße
+MEMORY_SIZE_MAX = 20000 # Maximale Speichergröße
 ACTIONS = ["up", "down", "left", "right"]
 NUM_ACTIONS = len(ACTIONS)
 
 # Belohnungen
-REWARD_PELLET = 2 # Increased reward for pellets
-REWARD_POWER_PELLET = 10 # Increased reward for power pellets
-REWARD_GHOST = -10
-REWARD_WALL = -0.1
-REWARD_STEP = -0.005  # Reduced step penalty
+REWARD_PELLET = 0.2
+REWARD_POWER_PELLET = 1.0
+REWARD_GHOST = -1.0
+REWARD_WALL = -0.02
+REWARD_STEP = -0.001
+
+
 
 STATE_SIZE = 17 # Global static state size
 
@@ -218,7 +221,7 @@ class PacManEnvironment:
             if self.is_collision(self.pacman_pos, power_pellet):
                 self.power_pellets.remove(power_pellet)
                 self.power_mode = True
-                self.power_mode_timer = 150 # Anzahl Schritte für Power-Modus
+                self.power_mode_timer = 200 # Anzahl Schritte für Power-Modus
                 reward += REWARD_POWER_PELLET
 
         return self.get_state(), reward, self.done
@@ -434,7 +437,8 @@ def train_agent(alpha=0.6, beta_start=0.4):
     action_size = NUM_ACTIONS
     agent = DDQNAgent(state_size, action_size, alpha=alpha, beta_start=beta_start)
     episode_rewards = []
-
+    best_mean_reward = float('-inf')  # Track the best mean reward
+    
     for e in range(NUM_EPISODES):
         state = env.reset()
         done = False
@@ -470,23 +474,36 @@ def train_agent(alpha=0.6, beta_start=0.4):
         episode_duration = end_time - start_time
 
         episode_rewards.append(total_reward)
+        mean_reward = np.mean(episode_rewards[-10:]) # Calculate mean reward of last 10 episodes
         print(
-            f"Episode: {e + 1}/{NUM_EPISODES}, Belohnung: {total_reward:.2f}, Schritte: {steps}, Epsilon: {agent.epsilon:.2f}, Dauer: {episode_duration:.2f}s, Memory size: {len(agent.memory)}"
+            f"Episode: {e + 1}/{NUM_EPISODES}, Belohnung: {total_reward:.2f}, Schritte: {steps}, Epsilon: {agent.epsilon:.2f}, Dauer: {episode_duration:.2f}s, Memory size: {len(agent.memory)}, Mean Reward (Last 10): {mean_reward:.2f}"
         )
-
-        if len(agent.memory) > BATCH_SIZE: # Train nur wenn genug Daten im Memory sind
+        
+        if len(agent.memory) > BATCH_SIZE: # Train only if enough data in memory
             agent.replay(BATCH_SIZE)
         
         if e % agent.target_update_freq == 0:
              agent.update_target_model()
+             
+        # Save model only if it's better
+        if mean_reward > best_mean_reward:
+            best_mean_reward = mean_reward
+            agent.save_model()
+            print(f"Besseres Modell gespeichert mit durchschnittlicher Belohnung: {best_mean_reward:.2f}")
 
-        agent.save_model()
 
-    print(f"Training abgeschlossen. Durchschnittliche Belohnung: {np.mean(episode_rewards):.2f}")
-    return np.mean(episode_rewards)
+    print(f"Training abgeschlossen. Beste Durchschnittliche Belohnung: {best_mean_reward:.2f}")
+    return best_mean_reward
 
 
 if __name__ == "__main__":
+    #episode_rewards = train_agent(alpha=0.5, beta_start=0.3)
+    
+    #plt.plot(episode_rewards)
+    #plt.title("Reward-Verlauf")
+    #plt.xlabel("Episode")
+    #plt.ylabel("Reward")
+    #plt.show()
     # 1. Umgebungsprüfung
     test_environment()
 
